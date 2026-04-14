@@ -1,0 +1,18 @@
+services:
+  melcloud-bridge:
+    build: .
+    container_name: melcloud-bridge
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    env_file:
+      - .env
+    environment:
+      - CHROMIUM_PATH=/usr/bin/chromium
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - chromium-data:/tmp/chromium-data
+
+volumes:
+  chromium-data:
