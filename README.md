@@ -63,17 +63,58 @@ For multi-device setups, add `?device_id=YOUR_ID` to the URL.
 
 The endpoint rejects commands if the device is disconnected.
 
-## Setup
+## Deploy
 
-1. Copy `.env.example` to `.env` and fill in your MELCloud Home credentials
-2. Run with Docker Compose:
+### Option A: Pull pre-built image (recommended for homelab/Portainer)
+
+The image is automatically built and pushed to GitHub Container Registry on every commit.
 
 ```bash
+docker run -d \
+  --name melcloud-bridge \
+  --restart unless-stopped \
+  -p 8099:8099 \
+  -e MELCLOUD_EMAIL=your-email@example.com \
+  -e MELCLOUD_PASSWORD=your-password \
+  -e POLL_INTERVAL=60 \
+  ghcr.io/apoxx9/melcloud-bridge:latest
+```
+
+Or as a **Portainer Stack** (Stacks -> Add Stack -> paste this):
+
+```yaml
+services:
+  melcloud-bridge:
+    image: ghcr.io/apoxx9/melcloud-bridge:latest
+    container_name: melcloud-bridge
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    environment:
+      - MELCLOUD_EMAIL=your-email@example.com
+      - MELCLOUD_PASSWORD=your-password
+      - POLL_INTERVAL=60
+```
+
+The image supports both `linux/amd64` and `linux/arm64`.
+
+### Option B: Build from source
+
+```bash
+git clone https://github.com/apoxx9/melcloud-bridge.git
+cd melcloud-bridge
+cp .env.example .env
+# Edit .env with your credentials
 docker compose up -d
 ```
 
-3. Check health: `curl http://localhost:8099/health`
-4. API docs: `http://localhost:8099/docs`
+### Verify
+
+```bash
+curl http://localhost:8099/health
+```
+
+API docs are available at `http://localhost:8099/docs`.
 
 ## Configuration
 
