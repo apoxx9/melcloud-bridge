@@ -12,6 +12,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# Suppress noisy pyppeteer debug logs
+logging.getLogger("pyppeteer").setLevel(logging.WARNING)
+logging.getLogger("websockets").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 

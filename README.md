@@ -2,11 +2,11 @@
 
 Docker-based REST API bridge for MELCloud Home (home.melcloud.com) heat pump control.
 
-Built for the Mitsubishi MSZ-LN60VG with MAC-597IFB-E WiFi adapter, but works with any MELCloud Home device.
+Built for the Mitsubishi MSZ-LN60VG with MAC-597IFB-E WiFi adapter, but works with any MELCloud Home ATA/ATW device.
 
 ## Why
 
-MELCloud Home uses browser-based OAuth (AWS Cognito) — there's no simple API key or HTTP login. This bridge handles the headless browser authentication via pymelcloudhome and exposes a clean REST API.
+MELCloud Home uses a three-layer OIDC auth chain (Cognito → IdentityServer → BFF). There's no simple API key or token. This bridge handles the full authentication flow via HTTP and exposes a clean REST API.
 
 ## Endpoints
 
@@ -28,6 +28,8 @@ MELCloud Home uses browser-based OAuth (AWS Cognito) — there's no simple API k
 ```
 
 All fields are optional. Valid modes: `heat`, `cool`, `dry`, `fan`, `auto`.
+
+Both `/status` and `/control` accept an optional `?device_id=` query param. Defaults to the first device.
 
 ## Setup
 
@@ -53,8 +55,8 @@ docker compose up -d
 
 ## Architecture
 
-- **FastAPI** REST API with async endpoints
-- **pymelcloudhome** for MELCloud Home OAuth + device communication
-- **Headless Chromium** inside the container for the OAuth flow
+- **FastAPI** async REST API
+- **HTTP-only auth** — follows the full OIDC redirect chain without a browser
 - **Polling cache** refreshes device state every `POLL_INTERVAL` seconds
-- ATA (air-to-air) write support extended beyond upstream library
+- **ATA write support** for air-to-air unit control
+- **Lightweight Docker image** — python:3.12-slim, no Chromium

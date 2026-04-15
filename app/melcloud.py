@@ -1,19 +1,33 @@
-"""MELCloud Home client wrapper with ATA write support and polling cache."""
+"""MELCloud Home client — HTTP-based auth (no browser) with ATA write support."""
 
 import asyncio
 import logging
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
-from pymelcloudhome import MelCloudHomeClient
-from pymelcloudhome.models import Device
+from yarl import URL
 
 from app.config import settings
+from app.models import Device, UserProfile
 
 logger = logging.getLogger(__name__)
 
-# MELCloud Home ATA operation mode mapping
+BASE_URL = "https://www.melcloudhome.com/api/"
+LOGIN_URL = "https://www.melcloudhome.com/bff/login?returnUrl=/dashboard"
+
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+API_HEADERS = {
+    "x-csrf": "1",
+    "User-Agent": USER_AGENT,
+}
+
+# Mitsubishi ATA operation mode codes
 ATA_MODE_MAP = {
     "heat": 1,
     "dry": 2,
@@ -22,14 +36,11 @@ ATA_MODE_MAP = {
     "auto": 8,
 }
 
-ATA_MODE_REVERSE = {v: k for k, v in ATA_MODE_MAP.items()}
-
 
 class MelCloudBridge:
-    """Wraps pymelcloudhome with ATA write support and a polling cache."""
+    """Handles auth, polling, and device control for MELCloud Home."""
 
     def __init__(self) -> None:
-        self._client: MelCloudHomeClient | None = None
         self._session: aiohttp.ClientSession | None = None
         self._authenticated = False
         self._devices: list[Device] = []
@@ -38,37 +49,51 @@ class MelCloudBridge:
         self._lock = asyncio.Lock()
 
     async def start(self) -> None:
-        """Authenticate and start the polling loop."""
-        self._session = aiohttp.ClientSession()
-        self._client = MelCloudHomeClient(
-            session=self._session,
-            chromium_executable_path=settings.chromium_path,
+        # Use a cookie jar that handles all domains and don't auto-follow redirects
+        self._session = aiohttp.ClientSession(
+            cookie_jar=aiohttp.CookieJar(unsafe=True),
+            headers={"User-Agent": USER_AGENT},
         )
         await self._login()
         self._poll_task = asyncio.create_task(self._poll_loop())
 
     async def stop(self) -> None:
-        """Stop polling and close the session."""
         if self._poll_task:
             self._poll_task.cancel()
             try:
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
-        if self._client:
-            await self._client.close()
         if self._session and not self._session.closed:
             await self._session.close()
         self._authenticated = False
 
+    # --- Authentication via HTTP redirect chain ---
+
     async def _login(self) -> None:
-        """Perform browser-based OAuth login."""
+        """
+        Authenticate by following the full OIDC redirect chain:
+        Homepage → BFF → IdentityServer → Cognito → POST credentials → follow redirects back
+        """
         logger.info("Authenticating with MELCloud Home...")
+
         try:
-            await self._client.login(
-                settings.melcloud_email,
-                settings.melcloud_password,
-            )
+            # Step 0: Visit homepage to establish initial cookies/state
+            async with self._session.get("https://www.melcloudhome.com/") as resp:
+                logger.info("Homepage loaded: %d", resp.status)
+
+            # Step 1: Hit /bff/login — follow redirects to Cognito login page
+            cognito_url, cognito_html = await self._follow_redirects_to_cognito()
+
+            # Step 2: Extract CSRF token and form action from the Cognito page
+            form_action, csrf_token = self._parse_cognito_form(cognito_html, cognito_url)
+
+            # Step 3: POST credentials to Cognito
+            await self._submit_cognito_credentials(form_action, csrf_token)
+
+            # Step 4: Verify we're authenticated by hitting the API
+            await self._verify_auth()
+
             self._authenticated = True
             logger.info("Authentication successful.")
         except Exception:
@@ -76,8 +101,141 @@ class MelCloudBridge:
             logger.exception("Authentication failed")
             raise
 
+    async def _follow_redirects_to_cognito(self) -> tuple[str, str]:
+        """Follow the redirect chain from /bff/login to the Cognito login page."""
+        url = LOGIN_URL
+        for i in range(10):  # max redirects
+            async with self._session.get(url, allow_redirects=False) as resp:
+                if resp.status in (301, 302, 303, 307, 308):
+                    url = resp.headers["Location"]
+                    if not url.startswith("http"):
+                        # Relative redirect
+                        parsed = urlparse(str(resp.url))
+                        url = f"{parsed.scheme}://{parsed.netloc}{url}"
+                    logger.debug("Redirect %d: %s", i, url[:100])
+                    continue
+                elif resp.status == 200:
+                    html = await resp.text()
+                    if "cognitoSignInForm" in html:
+                        logger.info("Reached Cognito login page")
+                        return str(resp.url), html
+                    else:
+                        logger.warning("Got 200 but no login form at: %s", str(resp.url)[:100])
+                        # Maybe it's an intermediate page, check for auto-redirect in HTML
+                        raise RuntimeError(f"Unexpected page at {str(resp.url)[:100]}")
+                else:
+                    raise RuntimeError(f"Unexpected status {resp.status} at {url[:100]}")
+
+        raise RuntimeError("Too many redirects")
+
+    def _parse_cognito_form(self, html: str, page_url: str) -> tuple[str, str]:
+        """Extract form action and CSRF token from the Cognito login page."""
+        import re
+
+        # Extract CSRF token
+        csrf_match = re.search(r'name="_csrf"\s+value="([^"]+)"', html)
+        if not csrf_match:
+            raise RuntimeError("Could not find CSRF token in Cognito form")
+        csrf_token = csrf_match.group(1)
+
+        # Extract form action (it's a relative or absolute URL)
+        action_match = re.search(
+            r'<form[^>]*name="cognitoSignInForm"[^>]*action="([^"]+)"', html
+        )
+        if action_match:
+            form_action = action_match.group(1)
+            # The action URL is HTML-encoded
+            form_action = form_action.replace("&amp;", "&")
+            if not form_action.startswith("http"):
+                parsed = urlparse(page_url)
+                form_action = f"{parsed.scheme}://{parsed.netloc}{form_action}"
+        else:
+            # Fallback: form posts to itself
+            form_action = page_url
+
+        logger.info("Form action: %s", form_action[:100])
+        return form_action, csrf_token
+
+    async def _submit_cognito_credentials(self, form_action: str, csrf_token: str) -> None:
+        """POST credentials to Cognito and follow the redirect chain back to BFF."""
+        form_data = {
+            "_csrf": csrf_token,
+            "username": settings.melcloud_email,
+            "password": settings.melcloud_password,
+            "cognitoAsfData": "",
+            "signInSubmitButton": "Sign in",
+        }
+
+        # POST to Cognito — follow the full redirect chain back
+        url = form_action
+        method = "POST"
+        data = form_data
+
+        for i in range(15):  # max redirects through IdentityServer and BFF
+            if method == "POST":
+                async with self._session.post(
+                    url, data=data, allow_redirects=False
+                ) as resp:
+                    status = resp.status
+                    headers = resp.headers
+                    body = await resp.text()
+            else:
+                async with self._session.get(url, allow_redirects=False) as resp:
+                    status = resp.status
+                    headers = resp.headers
+                    body = await resp.text()
+
+            if status in (301, 302, 303, 307, 308):
+                url = headers["Location"]
+                if not url.startswith("http"):
+                    parsed = urlparse(str(resp.url) if hasattr(resp, 'url') else form_action)
+                    url = f"{parsed.scheme}://{parsed.netloc}{url}"
+                # 303 always becomes GET, 301/302 typically become GET after POST
+                method = "GET" if status != 307 else method
+                data = None
+                logger.debug("Auth redirect %d (%d): %s", i, status, url[:100])
+                continue
+            elif status == 200:
+                # Check if this is a form_post response (IdentityServer callback)
+                if 'method="post"' in body.lower() or "method='post'" in body.lower():
+                    # Auto-submit form — extract action and hidden fields
+                    import re
+                    action_match = re.search(r'action="([^"]+)"', body)
+                    if action_match:
+                        url = action_match.group(1).replace("&amp;", "&")
+                        # Extract all hidden input fields
+                        fields = dict(re.findall(
+                            r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body
+                        ))
+                        method = "POST"
+                        data = fields
+                        logger.debug("Auto-submit form to: %s with %d fields", url[:100], len(fields))
+                        continue
+                # We're done — should be on the dashboard
+                logger.info("Login chain completed at: %s", url[:100])
+                return
+            else:
+                # Check for error message
+                if "Incorrect username or password" in body:
+                    raise RuntimeError("Incorrect username or password")
+                raise RuntimeError(f"Unexpected status {status} during auth at {url[:100]}")
+
+        raise RuntimeError("Too many redirects during auth")
+
+    async def _verify_auth(self) -> None:
+        """Verify authentication by hitting the API."""
+        async with self._session.get(
+            f"{BASE_URL}user/context", headers=API_HEADERS
+        ) as resp:
+            if resp.status == 401 or resp.status == 403:
+                raise RuntimeError(f"API returned {resp.status} after login — session cookies not valid")
+            resp.raise_for_status()
+            data = await resp.json()
+            logger.info("Auth verified — user: %s", data.get("email", "unknown"))
+
+    # --- Polling ---
+
     async def _poll_loop(self) -> None:
-        """Periodically refresh device data."""
         while True:
             try:
                 await self._refresh_devices()
@@ -86,11 +244,48 @@ class MelCloudBridge:
             await asyncio.sleep(settings.poll_interval)
 
     async def _refresh_devices(self) -> None:
-        """Fetch fresh device list from MELCloud Home."""
         async with self._lock:
-            self._devices = await self._client.list_devices()
+            data = await self._api_get("user/context")
+            profile = UserProfile.model_validate(data)
+            devices = []
+            for building in profile.buildings:
+                for d in building.air_to_air_units:
+                    d.device_type = "ataunit"
+                    devices.append(d)
+                for d in building.air_to_water_units:
+                    d.device_type = "atwunit"
+                    devices.append(d)
+            self._devices = devices
             self._last_poll = time.time()
-            logger.debug("Refreshed %d devices", len(self._devices))
+            logger.info("Refreshed %d devices", len(devices))
+
+    # --- API helpers ---
+
+    async def _api_get(self, endpoint: str) -> dict[str, Any]:
+        url = f"{BASE_URL}{endpoint}"
+        async with self._session.get(url, headers=API_HEADERS) as resp:
+            if resp.status in (401, 403):
+                logger.warning("Session expired, re-authenticating...")
+                await self._login()
+                async with self._session.get(url, headers=API_HEADERS) as retry:
+                    retry.raise_for_status()
+                    return await retry.json()
+            resp.raise_for_status()
+            return await resp.json()
+
+    async def _api_put(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
+        url = f"{BASE_URL}{endpoint}"
+        async with self._session.put(url, json=data, headers=API_HEADERS) as resp:
+            if resp.status in (401, 403):
+                logger.warning("Session expired, re-authenticating...")
+                await self._login()
+                async with self._session.put(url, json=data, headers=API_HEADERS) as retry:
+                    retry.raise_for_status()
+                    return await retry.json()
+            resp.raise_for_status()
+            return await resp.json()
+
+    # --- Public interface ---
 
     @property
     def is_authenticated(self) -> bool:
@@ -107,11 +302,9 @@ class MelCloudBridge:
         return time.time() - self._last_poll
 
     async def get_devices(self) -> list[Device]:
-        """Return cached device list."""
         return list(self._devices)
 
     async def get_device(self, device_id: str | None = None) -> Device | None:
-        """Get a specific device by ID, or the first device if no ID given."""
         if not self._devices:
             return None
         if device_id is None:
@@ -121,8 +314,9 @@ class MelCloudBridge:
                 return d
         return None
 
-    async def get_status(self, device_id: str | None = None, fresh: bool = False) -> dict[str, Any] | None:
-        """Get device status. If fresh=True, force a refresh first."""
+    async def get_status(
+        self, device_id: str | None = None, fresh: bool = False
+    ) -> dict[str, Any] | None:
         if fresh:
             await self._refresh_devices()
 
@@ -130,10 +324,7 @@ class MelCloudBridge:
         if device is None:
             return None
 
-        settings_dict = {}
-        if device.settings:
-            for s in device.settings:
-                settings_dict[s.name] = s.value
+        settings_dict = {s.name: s.value for s in device.settings}
 
         return {
             "id": device.id,
@@ -151,12 +342,6 @@ class MelCloudBridge:
         mode: str | None = None,
         device_id: str | None = None,
     ) -> dict[str, Any]:
-        """
-        Set ATA device state via the MELCloud Home API.
-
-        pymelcloudhome only supports ATW writes out of the box.
-        We extend it here by calling the same PUT pattern for ATA units.
-        """
         device = await self.get_device(device_id)
         if device is None:
             raise ValueError("Device not found")
@@ -165,10 +350,8 @@ class MelCloudBridge:
 
         if power is not None:
             state_data["power"] = power
-
         if temperature is not None:
             state_data["setTemperature"] = temperature
-
         if mode is not None:
             if mode not in ATA_MODE_MAP:
                 raise ValueError(f"Unknown mode: {mode}. Valid: {list(ATA_MODE_MAP.keys())}")
@@ -177,42 +360,12 @@ class MelCloudBridge:
         if not state_data:
             raise ValueError("No control parameters provided")
 
-        # Use the library's set_device_state for ATW units
         device_type = device.device_type or "ataunit"
+        result = await self._api_put(f"{device_type}/{device.id}", state_data)
 
-        if device_type == "atwunit":
-            result = await self._client.set_device_state(device.id, device_type, state_data)
-        else:
-            # ATA write: call the API directly since pymelcloudhome doesn't support it
-            result = await self._ata_set_state(device.id, state_data)
-
-        # Invalidate cache so next read gets fresh data
+        # Force refresh on next poll
         self._last_poll = 0
-
         return result
 
-    async def _ata_set_state(self, device_id: str, state_data: dict[str, Any]) -> dict[str, Any]:
-        """Direct PUT to MELCloud Home API for ATA unit control."""
-        url = f"https://www.melcloudhome.com/api/ataunit/{device_id}"
-        headers = {
-            "x-csrf": "1",
-            "Content-Type": "application/json",
-            "User-Agent": (
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-            ),
-        }
 
-        async with self._session.put(url, json=state_data, headers=headers) as resp:
-            if resp.status == 401:
-                logger.warning("Got 401 on ATA write, re-authenticating...")
-                await self._login()
-                async with self._session.put(url, json=state_data, headers=headers) as retry_resp:
-                    retry_resp.raise_for_status()
-                    return await retry_resp.json()
-            resp.raise_for_status()
-            return await resp.json()
-
-
-# Singleton instance
 bridge = MelCloudBridge()

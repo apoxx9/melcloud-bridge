@@ -1,5 +1,9 @@
 from enum import Enum
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
+
+
+# --- API request/response models ---
 
 
 class OperationMode(str, Enum):
@@ -38,3 +42,38 @@ class HealthResponse(BaseModel):
     authenticated: bool
     device_count: int
     cache_age_seconds: float | None
+
+
+# --- MELCloud Home data models ---
+
+
+class Setting(BaseModel):
+    name: str
+    value: str
+
+
+class Device(BaseModel):
+    id: str
+    device_type: str | None = None
+    given_display_name: str = Field(alias="givenDisplayName")
+    settings: list[Setting] = Field(default_factory=list)
+    is_connected: bool = Field(alias="isConnected")
+    is_in_error: bool = Field(alias="isInError")
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+
+class Building(BaseModel):
+    id: str
+    name: str
+    air_to_air_units: list[Device] = Field(default_factory=list, alias="airToAirUnits")
+    air_to_water_units: list[Device] = Field(default_factory=list, alias="airToWaterUnits")
+
+    model_config = {"populate_by_name": True}
+
+
+class UserProfile(BaseModel):
+    id: str
+    buildings: list[Building]
+
+    model_config = {"extra": "allow"}
