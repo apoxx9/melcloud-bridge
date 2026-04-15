@@ -94,11 +94,26 @@ LOXONE_MODE_REVERSE = {v: k.lower() for k, v in LOXONE_MODE_MAP.items()}
 LOXONE_FAN_MAP = {
     "Auto": 0,
     "Off": 0,
+    "Silent": 1,
     "One": 1,
     "Two": 2,
     "Three": 3,
     "Four": 4,
     "Five": 5,
+}
+
+# Vane string -> Loxone number (for status output)
+LOXONE_VANE_V_MAP = {
+    "Auto": 0,
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+    "Swing": 6,
+}
+
+LOXONE_VANE_H_MAP = {
+    "Auto": 0,
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
+    "Left": 1, "MiddleLeft": 2, "Centre": 3, "MiddleRight": 4, "Right": 5, "Split": 6,
+    "Swing": 7,
 }
 
 # Numeric -> fan speed name (for /control/{device}/fan/{number})
@@ -130,6 +145,8 @@ async def get_status_loxone(
         "mode": LOXONE_MODE_MAP.get(s.get("OperationMode", ""), 0),
         "fan_speed": LOXONE_FAN_MAP.get(s.get("ActualFanSpeed", ""), 0),
         "set_fan_speed": LOXONE_FAN_MAP.get(s.get("SetFanSpeed", ""), 0),
+        "vane_vertical": LOXONE_VANE_V_MAP.get(s.get("VaneVerticalDirection", ""), 0),
+        "vane_horizontal": LOXONE_VANE_H_MAP.get(s.get("VaneHorizontalDirection", ""), 0),
         "is_connected": 1 if status["is_connected"] else 0,
         "is_in_error": 1 if status["is_in_error"] else 0,
     }
@@ -200,7 +217,7 @@ async def control_mode(device: str, mode: str):
         else:
             raise HTTPException(status_code=400, detail=f"Unknown mode number: {mode_num}. Valid: 1-5")
     except ValueError:
-        pass  # String mode like "heat" — pass through as-is
+        mode = mode.lower()  # Normalize to lowercase
     return await _control_device(device, mode=mode)
 
 
@@ -221,7 +238,7 @@ async def control_fan(device: str, speed: str):
         else:
             raise HTTPException(status_code=400, detail=f"Unknown fan speed number: {speed_num}. Valid: 0-5")
     except ValueError:
-        pass  # String like "auto", "silent" — pass through
+        speed = speed.lower()  # Normalize to lowercase
     return await _control_device(device, fan_speed=speed)
 
 
@@ -241,7 +258,7 @@ async def control_vane_vertical(device: str, direction: str):
         else:
             raise HTTPException(status_code=400, detail=f"Unknown vane vertical number: {num}. Valid: 0-6")
     except ValueError:
-        pass
+        direction = direction.lower()
     return await _control_device(device, vane_vertical=direction)
 
 
@@ -254,5 +271,5 @@ async def control_vane_horizontal(device: str, direction: str):
         else:
             raise HTTPException(status_code=400, detail=f"Unknown vane horizontal number: {num}. Valid: 0-7")
     except ValueError:
-        pass
+        direction = direction.lower()
     return await _control_device(device, vane_horizontal=direction)

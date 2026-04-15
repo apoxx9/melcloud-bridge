@@ -145,6 +145,8 @@ http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
 | Fan Speed (actual) | `"fan_speed":\i` |
 | Fan Speed (set) | `"set_fan_speed":\i` |
 | Connected | `"is_connected":\i` |
+| Vane Vertical | `"vane_vertical":\i` |
+| Vane Horizontal | `"vane_horizontal":\i` |
 | Error | `"is_in_error":\i` |
 
 **Virtual Output** — base address `http://BRIDGE_IP:8099`, then add connectors:
