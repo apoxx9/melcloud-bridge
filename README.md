@@ -80,6 +80,7 @@ Single-URL GET endpoints for simple HTTP clients that can't send POST requests w
 
 | URL | Action |
 |-----|--------|
+| `/status/{device}` | Get device status (add `?fresh=true` to skip cache) |
 | `/control/{device}/on` | Power on |
 | `/control/{device}/off` | Power off |
 | `/control/{device}/mode/{mode}` | Set mode (heat, cool, dry, fan, auto) |

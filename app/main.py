@@ -68,6 +68,17 @@ async def get_status(
     return DeviceStatus(**status)
 
 
+@app.get("/status/{device}", response_model=DeviceStatus)
+async def get_status_by_device(
+    device: str,
+    fresh: bool = Query(False, description="Force a live query instead of cache"),
+):
+    status = await bridge.get_status(device_id=device, fresh=fresh)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return DeviceStatus(**status)
+
+
 @app.post("/control")
 async def control(
     body: ControlRequest,
