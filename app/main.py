@@ -79,6 +79,48 @@ async def get_status_by_device(
     return DeviceStatus(**status)
 
 
+# Mode string -> numeric mapping for Loxone
+LOXONE_MODE_MAP = {
+    "Heat": 1,
+    "Cool": 2,
+    "Dry": 3,
+    "Fan": 4,
+    "Auto": 5,
+}
+
+LOXONE_FAN_MAP = {
+    "Auto": 0,
+    "One": 1,
+    "Two": 2,
+    "Three": 3,
+    "Four": 4,
+    "Off": 0,
+}
+
+
+@app.get("/status/{device}/loxone")
+async def get_status_loxone(
+    device: str,
+    fresh: bool = Query(False, description="Force a live query instead of cache"),
+):
+    """Loxone-friendly status with flat numeric values."""
+    status = await bridge.get_status(device_id=device, fresh=fresh)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    s = status["settings"]
+    return {
+        "room_temp": float(s.get("RoomTemperature", 0)),
+        "set_temp": float(s.get("SetTemperature", 0)),
+        "power": 1 if s.get("Power") == "True" else 0,
+        "mode": LOXONE_MODE_MAP.get(s.get("OperationMode", ""), 0),
+        "fan_speed": LOXONE_FAN_MAP.get(s.get("ActualFanSpeed", ""), 0),
+        "set_fan_speed": LOXONE_FAN_MAP.get(s.get("SetFanSpeed", ""), 0),
+        "is_connected": 1 if status["is_connected"] else 0,
+        "is_in_error": 1 if status["is_in_error"] else 0,
+    }
+
+
 @app.post("/control")
 async def control(
     body: ControlRequest,
