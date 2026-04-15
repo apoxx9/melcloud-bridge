@@ -202,6 +202,7 @@ class MelCloudBridge:
         method = "POST"
         data = form_data
 
+        current_url = form_action
         for i in range(15):  # max redirects through IdentityServer and BFF
             if method == "POST":
                 async with self._session.post(
@@ -210,16 +211,18 @@ class MelCloudBridge:
                     status = resp.status
                     headers = resp.headers
                     body = await resp.text()
+                    current_url = str(resp.url)
             else:
                 async with self._session.get(url, allow_redirects=False) as resp:
                     status = resp.status
                     headers = resp.headers
                     body = await resp.text()
+                    current_url = str(resp.url)
 
             if status in (301, 302, 303, 307, 308):
                 url = headers["Location"]
                 if not url.startswith("http"):
-                    parsed = urlparse(str(resp.url) if hasattr(resp, 'url') else form_action)
+                    parsed = urlparse(current_url)
                     url = f"{parsed.scheme}://{parsed.netloc}{url}"
                 # 303 always becomes GET, 301/302 typically become GET after POST
                 method = "GET" if status != 307 else method
