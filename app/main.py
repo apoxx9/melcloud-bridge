@@ -93,11 +93,22 @@ LOXONE_MODE_REVERSE = {v: k.lower() for k, v in LOXONE_MODE_MAP.items()}
 
 LOXONE_FAN_MAP = {
     "Auto": 0,
+    "Off": 0,
     "One": 1,
     "Two": 2,
     "Three": 3,
     "Four": 4,
-    "Off": 0,
+    "Five": 5,
+}
+
+# Numeric -> fan speed name (for /control/{device}/fan/{number})
+LOXONE_FAN_REVERSE = {
+    0: "auto",
+    1: "silent",
+    2: "1",
+    3: "2",
+    4: "3",
+    5: "4",
 }
 
 
@@ -200,6 +211,15 @@ async def control_temp(device: str, value: float):
 
 @app.get("/control/{device}/fan/{speed}")
 async def control_fan(device: str, speed: str):
+    # Support numeric fan speed (0-5) for Loxone connectors
+    try:
+        speed_num = int(speed)
+        if speed_num in LOXONE_FAN_REVERSE:
+            speed = LOXONE_FAN_REVERSE[speed_num]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown fan speed number: {speed_num}. Valid: 0-5")
+    except ValueError:
+        pass  # String like "auto", "silent" — pass through
     return await _control_device(device, fan_speed=speed)
 
 

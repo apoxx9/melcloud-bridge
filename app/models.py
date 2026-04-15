@@ -16,6 +16,7 @@ class OperationMode(str, Enum):
 
 class FanSpeed(str, Enum):
     AUTO = "auto"
+    SILENT = "silent"
     ONE = "1"
     TWO = "2"
     THREE = "3"

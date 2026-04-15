@@ -37,10 +37,11 @@ ATA_MODE_MAP = {
 
 ATA_FAN_SPEED_MAP = {
     "auto": 0,
-    "1": 1,
-    "2": 2,
-    "3": 3,
-    "4": 4,
+    "silent": 1,
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
 }
 
 ATA_VANE_VERTICAL_MAP = {

@@ -66,7 +66,7 @@ curl -X POST http://localhost:8099/control -H "Content-Type: application/json" -
 | power            | `true`, `false`                                            |
 | temperature      | float (device-dependent range, typically 16-31)            |
 | mode             | `heat`, `cool`, `dry`, `fan`, `auto`                       |
-| fan_speed        | `auto`, `1`, `2`, `3`, `4`                                 |
+| fan_speed        | `auto`, `silent`, `1`, `2`, `3`, `4`                       |
 | vane_vertical    | `auto`, `1`, `2`, `3`, `4`, `5`, `swing`                   |
 | vane_horizontal  | `auto`, `1`-`6`, `swing`                                   |
 
@@ -86,11 +86,11 @@ Single-URL GET endpoints for simple HTTP clients that can't send POST requests w
 | `/control/{device}/off` | Power off |
 | `/control/{device}/mode/{mode}` | Set mode by name or number (see table below) |
 | `/control/{device}/temp/{value}` | Set temperature |
-| `/control/{device}/fan/{speed}` | Set fan speed (auto, 1-4) |
+| `/control/{device}/fan/{speed}` | Set fan speed by name or number (see table below) |
 | `/control/{device}/vane/vertical/{dir}` | Set vertical vane (auto, 1-5, swing) |
 | `/control/{device}/vane/horizontal/{dir}` | Set horizontal vane (auto, 1-6, swing) |
 
-Mode accepts both names and numbers:
+Mode and fan speed accept both names and numbers:
 
 | Number | Mode |
 |--------|------|
@@ -99,6 +99,15 @@ Mode accepts both names and numbers:
 | 3 | Cool |
 | 4 | Dry |
 | 5 | Fan |
+
+| Number | Fan Speed |
+|--------|-----------|
+| 0 | Auto |
+| 1 | Silent |
+| 2 | Speed 1 (low) |
+| 3 | Speed 2 (medium) |
+| 4 | Speed 3 (high) |
+| 5 | Speed 4 (turbo) |
 
 Examples:
 
