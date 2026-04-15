@@ -4,10 +4,9 @@ import asyncio
 import logging
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 import aiohttp
-from yarl import URL
 
 from app.config import settings
 from app.models import Device, UserProfile
@@ -34,6 +33,35 @@ ATA_MODE_MAP = {
     "cool": 3,
     "fan": 7,
     "auto": 8,
+}
+
+ATA_FAN_SPEED_MAP = {
+    "auto": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+}
+
+ATA_VANE_VERTICAL_MAP = {
+    "auto": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "swing": 7,
+}
+
+ATA_VANE_HORIZONTAL_MAP = {
+    "auto": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "swing": 12,
 }
 
 
@@ -236,12 +264,25 @@ class MelCloudBridge:
     # --- Polling ---
 
     async def _poll_loop(self) -> None:
+        consecutive_failures = 0
         while True:
             try:
                 await self._refresh_devices()
+                consecutive_failures = 0
             except Exception:
-                logger.exception("Poll cycle failed")
-            await asyncio.sleep(settings.poll_interval)
+                consecutive_failures += 1
+                logger.exception("Poll cycle failed (%d consecutive)", consecutive_failures)
+                # After 3 consecutive failures, try re-authenticating
+                if consecutive_failures >= 3:
+                    logger.warning("Multiple poll failures, attempting re-authentication...")
+                    try:
+                        await self._login()
+                        consecutive_failures = 0
+                    except Exception:
+                        logger.exception("Re-authentication failed")
+            # Back off on repeated failures: 60s, 120s, 240s, max 15min
+            backoff = min(settings.poll_interval * (2 ** min(consecutive_failures, 4)), 900)
+            await asyncio.sleep(backoff if consecutive_failures else settings.poll_interval)
 
     async def _refresh_devices(self) -> None:
         async with self._lock:
@@ -274,6 +315,7 @@ class MelCloudBridge:
             return await resp.json()
 
     async def _api_put(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
+        import json as json_mod
         url = f"{BASE_URL}{endpoint}"
         async with self._session.put(url, json=data, headers=API_HEADERS) as resp:
             if resp.status in (401, 403):
@@ -281,9 +323,11 @@ class MelCloudBridge:
                 await self._login()
                 async with self._session.put(url, json=data, headers=API_HEADERS) as retry:
                     retry.raise_for_status()
-                    return await retry.json()
+                    text = await retry.text()
+                    return json_mod.loads(text) if text.strip() else {"status": "ok"}
             resp.raise_for_status()
-            return await resp.json()
+            text = await resp.text()
+            return json_mod.loads(text) if text.strip() else {"status": "ok"}
 
     # --- Public interface ---
 
@@ -340,11 +384,17 @@ class MelCloudBridge:
         power: bool | None = None,
         temperature: float | None = None,
         mode: str | None = None,
+        fan_speed: str | None = None,
+        vane_vertical: str | None = None,
+        vane_horizontal: str | None = None,
         device_id: str | None = None,
     ) -> dict[str, Any]:
         device = await self.get_device(device_id)
         if device is None:
             raise ValueError("Device not found")
+
+        if not device.is_connected:
+            raise ValueError("Device is not connected")
 
         state_data: dict[str, Any] = {}
 
@@ -356,6 +406,18 @@ class MelCloudBridge:
             if mode not in ATA_MODE_MAP:
                 raise ValueError(f"Unknown mode: {mode}. Valid: {list(ATA_MODE_MAP.keys())}")
             state_data["operationMode"] = ATA_MODE_MAP[mode]
+        if fan_speed is not None:
+            if fan_speed not in ATA_FAN_SPEED_MAP:
+                raise ValueError(f"Unknown fan speed: {fan_speed}. Valid: {list(ATA_FAN_SPEED_MAP.keys())}")
+            state_data["setFanSpeed"] = ATA_FAN_SPEED_MAP[fan_speed]
+        if vane_vertical is not None:
+            if vane_vertical not in ATA_VANE_VERTICAL_MAP:
+                raise ValueError(f"Unknown vane vertical: {vane_vertical}. Valid: {list(ATA_VANE_VERTICAL_MAP.keys())}")
+            state_data["vaneVerticalDirection"] = ATA_VANE_VERTICAL_MAP[vane_vertical]
+        if vane_horizontal is not None:
+            if vane_horizontal not in ATA_VANE_HORIZONTAL_MAP:
+                raise ValueError(f"Unknown vane horizontal: {vane_horizontal}. Valid: {list(ATA_VANE_HORIZONTAL_MAP.keys())}")
+            state_data["vaneHorizontalDirection"] = ATA_VANE_HORIZONTAL_MAP[vane_horizontal]
 
         if not state_data:
             raise ValueError("No control parameters provided")

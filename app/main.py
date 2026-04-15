@@ -12,9 +12,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-# Suppress noisy pyppeteer debug logs
-logging.getLogger("pyppeteer").setLevel(logging.WARNING)
-logging.getLogger("websockets").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +73,11 @@ async def control(
     body: ControlRequest,
     device_id: str | None = Query(None, description="Device ID (defaults to first device)"),
 ):
-    if body.power is None and body.temperature is None and body.mode is None:
+    has_any = any(v is not None for v in [
+        body.power, body.temperature, body.mode,
+        body.fan_speed, body.vane_vertical, body.vane_horizontal,
+    ])
+    if not has_any:
         raise HTTPException(status_code=400, detail="At least one control parameter required")
 
     try:
@@ -84,6 +85,9 @@ async def control(
             power=body.power,
             temperature=body.temperature,
             mode=body.mode.value if body.mode else None,
+            fan_speed=body.fan_speed.value if body.fan_speed else None,
+            vane_vertical=body.vane_vertical.value if body.vane_vertical else None,
+            vane_horizontal=body.vane_horizontal.value if body.vane_horizontal else None,
             device_id=device_id,
         )
         return {"status": "ok", "result": result}

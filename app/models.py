@@ -14,10 +14,42 @@ class OperationMode(str, Enum):
     AUTO = "auto"
 
 
+class FanSpeed(str, Enum):
+    AUTO = "auto"
+    ONE = "1"
+    TWO = "2"
+    THREE = "3"
+    FOUR = "4"
+
+
+class VaneVertical(str, Enum):
+    AUTO = "auto"
+    ONE = "1"
+    TWO = "2"
+    THREE = "3"
+    FOUR = "4"
+    FIVE = "5"
+    SWING = "swing"
+
+
+class VaneHorizontal(str, Enum):
+    AUTO = "auto"
+    LEFT = "1"
+    MIDDLE_LEFT = "2"
+    CENTRE = "3"
+    MIDDLE_RIGHT = "4"
+    RIGHT = "5"
+    SPLIT = "6"
+    SWING = "swing"
+
+
 class ControlRequest(BaseModel):
     power: bool | None = None
     temperature: float | None = None
     mode: OperationMode | None = None
+    fan_speed: FanSpeed | None = None
+    vane_vertical: VaneVertical | None = None
+    vane_horizontal: VaneHorizontal | None = None
 
 
 class DeviceSummary(BaseModel):
