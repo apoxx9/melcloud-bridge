@@ -95,11 +95,10 @@ LOXONE_FAN_MAP = {
     "Auto": 0,
     "Off": 0,
     "Silent": 1,
-    "One": 1,
-    "Two": 2,
-    "Three": 3,
-    "Four": 4,
-    "Five": 5,
+    "One": 2,
+    "Two": 3,
+    "Three": 4,
+    "Four": 5,
 }
 
 # Vane string -> Loxone number (for status output)
