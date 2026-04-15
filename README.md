@@ -50,6 +50,17 @@ curl "http://localhost:8099/status?device_id=YOUR_ID&fresh=true"
 
 All fields are optional. Send only what you want to change.
 
+```bash
+# Turn on
+curl -X POST http://localhost:8099/control -H "Content-Type: application/json" -d '{"power": true}'
+
+# Heat to 22 degrees
+curl -X POST http://localhost:8099/control -H "Content-Type: application/json" -d '{"power": true, "mode": "heat", "temperature": 22}'
+
+# Turn off
+curl -X POST http://localhost:8099/control -H "Content-Type: application/json" -d '{"power": false}'
+```
+
 | Field            | Values                                                     |
 |------------------|------------------------------------------------------------|
 | power            | `true`, `false`                                            |
