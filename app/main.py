@@ -206,6 +206,8 @@ async def control_mode(device: str, mode: str):
 
 @app.get("/control/{device}/temp/{value}")
 async def control_temp(device: str, value: float):
+    if value < 16 or value > 31:
+        raise HTTPException(status_code=400, detail="Temperature must be between 16 and 31")
     return await _control_device(device, temperature=value)
 
 
@@ -223,11 +225,34 @@ async def control_fan(device: str, speed: str):
     return await _control_device(device, fan_speed=speed)
 
 
+# Numeric -> vane name (for Loxone connectors)
+# Vertical: 0=auto, 1-5=positions, 6=swing
+LOXONE_VANE_V_REVERSE = {0: "auto", 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "swing"}
+# Horizontal: 0=auto, 1-6=positions, 7=swing
+LOXONE_VANE_H_REVERSE = {0: "auto", 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "swing"}
+
+
 @app.get("/control/{device}/vane/vertical/{direction}")
 async def control_vane_vertical(device: str, direction: str):
+    try:
+        num = int(direction)
+        if num in LOXONE_VANE_V_REVERSE:
+            direction = LOXONE_VANE_V_REVERSE[num]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown vane vertical number: {num}. Valid: 0-6")
+    except ValueError:
+        pass
     return await _control_device(device, vane_vertical=direction)
 
 
 @app.get("/control/{device}/vane/horizontal/{direction}")
 async def control_vane_horizontal(device: str, direction: str):
+    try:
+        num = int(direction)
+        if num in LOXONE_VANE_H_REVERSE:
+            direction = LOXONE_VANE_H_REVERSE[num]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown vane horizontal number: {num}. Valid: 0-7")
+    except ValueError:
+        pass
     return await _control_device(device, vane_horizontal=direction)

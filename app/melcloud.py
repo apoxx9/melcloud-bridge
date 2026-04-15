@@ -1,7 +1,9 @@
 """MELCloud Home client — HTTP-based auth (no browser) with ATA write support."""
 
 import asyncio
+import json as json_mod
 import logging
+import re
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -159,7 +161,7 @@ class MelCloudBridge:
 
     def _parse_cognito_form(self, html: str, page_url: str) -> tuple[str, str]:
         """Extract form action and CSRF token from the Cognito login page."""
-        import re
+
 
         # Extract CSRF token
         csrf_match = re.search(r'name="_csrf"\s+value="([^"]+)"', html)
@@ -228,7 +230,7 @@ class MelCloudBridge:
                 # Check if this is a form_post response (IdentityServer callback)
                 if 'method="post"' in body.lower() or "method='post'" in body.lower():
                     # Auto-submit form — extract action and hidden fields
-                    import re
+            
                     action_match = re.search(r'action="([^"]+)"', body)
                     if action_match:
                         url = action_match.group(1).replace("&amp;", "&")
@@ -316,7 +318,6 @@ class MelCloudBridge:
             return await resp.json()
 
     async def _api_put(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
-        import json as json_mod
         url = f"{BASE_URL}{endpoint}"
         async with self._session.put(url, json=data, headers=API_HEADERS) as resp:
             if resp.status in (401, 403):

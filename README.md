@@ -85,12 +85,12 @@ Single-URL GET endpoints for simple HTTP clients that can't send POST requests w
 | `/control/{device}/on` | Power on |
 | `/control/{device}/off` | Power off |
 | `/control/{device}/mode/{mode}` | Set mode by name or number (see table below) |
-| `/control/{device}/temp/{value}` | Set temperature |
+| `/control/{device}/temp/{value}` | Set temperature (16-31) |
 | `/control/{device}/fan/{speed}` | Set fan speed by name or number (see table below) |
-| `/control/{device}/vane/vertical/{dir}` | Set vertical vane (auto, 1-5, swing) |
-| `/control/{device}/vane/horizontal/{dir}` | Set horizontal vane (auto, 1-6, swing) |
+| `/control/{device}/vane/vertical/{dir}` | Set vertical vane by name or number (see table below) |
+| `/control/{device}/vane/horizontal/{dir}` | Set horizontal vane by name or number (see table below) |
 
-Mode and fan speed accept both names and numbers:
+All controls accept both names and numbers:
 
 | Number | Mode |
 |--------|------|
@@ -108,6 +108,18 @@ Mode and fan speed accept both names and numbers:
 | 3 | Speed 2 (medium) |
 | 4 | Speed 3 (high) |
 | 5 | Speed 4 (turbo) |
+
+| Number | Vane Vertical |
+|--------|---------------|
+| 0 | Auto |
+| 1-5 | Position 1-5 |
+| 6 | Swing |
+
+| Number | Vane Horizontal |
+|--------|-----------------|
+| 0 | Auto |
+| 1-6 | Position 1-6 |
+| 7 | Swing |
 
 Examples:
 
@@ -130,8 +142,10 @@ http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
 | Set Temperature | `"set_temp":\i` |
 | Power | `"power":\i` |
 | Mode | `"mode":\i` |
-| Fan Speed | `"fan_speed":\i` |
+| Fan Speed (actual) | `"fan_speed":\i` |
+| Fan Speed (set) | `"set_fan_speed":\i` |
 | Connected | `"is_connected":\i` |
+| Error | `"is_in_error":\i` |
 
 **Virtual Output** — base address `http://BRIDGE_IP:8099`, then add connectors:
 
@@ -141,6 +155,10 @@ http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
 | Temperature | Analog | `/control/living/temp/<v.1>` | |
 | Mode | Analog | `/control/living/mode/<v.0>` | |
 | Fan Speed | Analog | `/control/living/fan/<v.0>` | |
+| Vane Vertical | Analog | `/control/living/vane/vertical/<v.0>` | |
+| Vane Horizontal | Analog | `/control/living/vane/horizontal/<v.0>` | |
+
+`<v.1>` = value with 1 decimal place, `<v.0>` = integer.
 
 ## Deploy
 

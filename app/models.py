@@ -46,7 +46,7 @@ class VaneHorizontal(str, Enum):
 
 class ControlRequest(BaseModel):
     power: bool | None = None
-    temperature: float | None = None
+    temperature: float | None = Field(None, ge=16, le=31)
     mode: OperationMode | None = None
     fan_speed: FanSpeed | None = None
     vane_vertical: VaneVertical | None = None
