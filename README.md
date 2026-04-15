@@ -74,6 +74,29 @@ For multi-device setups, add `?device_id=YOUR_ID` to the URL.
 
 The endpoint rejects commands if the device is disconnected.
 
+### GET control shortcuts
+
+Single-URL GET endpoints for simple HTTP clients that can't send POST requests with JSON bodies. The `{device}` segment accepts either the device **name** (case-insensitive) or **UUID**.
+
+| URL | Action |
+|-----|--------|
+| `/control/{device}/on` | Power on |
+| `/control/{device}/off` | Power off |
+| `/control/{device}/mode/{mode}` | Set mode (heat, cool, dry, fan, auto) |
+| `/control/{device}/temp/{value}` | Set temperature |
+| `/control/{device}/fan/{speed}` | Set fan speed (auto, 1-4) |
+| `/control/{device}/vane/vertical/{dir}` | Set vertical vane (auto, 1-5, swing) |
+| `/control/{device}/vane/horizontal/{dir}` | Set horizontal vane (auto, 1-6, swing) |
+
+Examples:
+
+```
+http://192.168.1.x:8099/control/living/on
+http://192.168.1.x:8099/control/living/mode/heat
+http://192.168.1.x:8099/control/living/temp/22
+http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
+```
+
 ## Deploy
 
 ### Option A: Pull pre-built image (recommended for homelab/Portainer)

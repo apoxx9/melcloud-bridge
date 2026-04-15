@@ -348,13 +348,20 @@ class MelCloudBridge:
     async def get_devices(self) -> list[Device]:
         return list(self._devices)
 
-    async def get_device(self, device_id: str | None = None) -> Device | None:
+    async def get_device(self, device_ref: str | None = None) -> Device | None:
+        """Get device by UUID, name (case-insensitive), or first device if None."""
         if not self._devices:
             return None
-        if device_id is None:
+        if device_ref is None:
             return self._devices[0]
+        # Try UUID match first
         for d in self._devices:
-            if d.id == device_id:
+            if d.id == device_ref:
+                return d
+        # Try name match (case-insensitive)
+        ref_lower = device_ref.lower()
+        for d in self._devices:
+            if d.given_display_name.lower() == ref_lower:
                 return d
         return None
 

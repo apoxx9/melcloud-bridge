@@ -96,3 +96,53 @@ async def control(
     except Exception as e:
         logger.exception("Control command failed")
         raise HTTPException(status_code=502, detail=f"MELCloud API error: {e}")
+
+
+# --- GET convenience endpoints for Loxone / simple HTTP clients ---
+
+
+async def _control_device(device_ref: str | None = None, **kwargs) -> dict:
+    """Shared helper for GET control endpoints."""
+    try:
+        result = await bridge.set_device_state(device_id=device_ref, **kwargs)
+        return {"status": "ok", "result": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Control command failed")
+        raise HTTPException(status_code=502, detail=f"MELCloud API error: {e}")
+
+
+@app.get("/control/{device}/on")
+async def control_on(device: str):
+    return await _control_device(device, power=True)
+
+
+@app.get("/control/{device}/off")
+async def control_off(device: str):
+    return await _control_device(device, power=False)
+
+
+@app.get("/control/{device}/mode/{mode}")
+async def control_mode(device: str, mode: str):
+    return await _control_device(device, mode=mode)
+
+
+@app.get("/control/{device}/temp/{value}")
+async def control_temp(device: str, value: float):
+    return await _control_device(device, temperature=value)
+
+
+@app.get("/control/{device}/fan/{speed}")
+async def control_fan(device: str, speed: str):
+    return await _control_device(device, fan_speed=speed)
+
+
+@app.get("/control/{device}/vane/vertical/{direction}")
+async def control_vane_vertical(device: str, direction: str):
+    return await _control_device(device, vane_vertical=direction)
+
+
+@app.get("/control/{device}/vane/horizontal/{direction}")
+async def control_vane_horizontal(device: str, direction: str):
+    return await _control_device(device, vane_horizontal=direction)
