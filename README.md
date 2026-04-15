@@ -81,22 +81,57 @@ Single-URL GET endpoints for simple HTTP clients that can't send POST requests w
 | URL | Action |
 |-----|--------|
 | `/status/{device}` | Get device status (add `?fresh=true` to skip cache) |
+| `/status/{device}/loxone` | Loxone-friendly status with flat numeric values |
 | `/control/{device}/on` | Power on |
 | `/control/{device}/off` | Power off |
-| `/control/{device}/mode/{mode}` | Set mode (heat, cool, dry, fan, auto) |
+| `/control/{device}/mode/{mode}` | Set mode by name or number (see table below) |
 | `/control/{device}/temp/{value}` | Set temperature |
 | `/control/{device}/fan/{speed}` | Set fan speed (auto, 1-4) |
 | `/control/{device}/vane/vertical/{dir}` | Set vertical vane (auto, 1-5, swing) |
 | `/control/{device}/vane/horizontal/{dir}` | Set horizontal vane (auto, 1-6, swing) |
 
+Mode accepts both names and numbers:
+
+| Number | Mode |
+|--------|------|
+| 1 | Auto |
+| 2 | Heat |
+| 3 | Cool |
+| 4 | Dry |
+| 5 | Fan |
+
 Examples:
 
 ```
+http://192.168.1.x:8099/status/living/loxone
 http://192.168.1.x:8099/control/living/on
 http://192.168.1.x:8099/control/living/mode/heat
+http://192.168.1.x:8099/control/living/mode/2
 http://192.168.1.x:8099/control/living/temp/22
 http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
 ```
+
+### Loxone integration
+
+**Virtual HTTP Input** — poll `http://BRIDGE_IP:8099/status/living/loxone` every 30s:
+
+| Input Command | Parse pattern |
+|---|---|
+| Room Temperature | `"room_temp":\i` |
+| Set Temperature | `"set_temp":\i` |
+| Power | `"power":\i` |
+| Mode | `"mode":\i` |
+| Fan Speed | `"fan_speed":\i` |
+| Connected | `"is_connected":\i` |
+
+**Virtual Output** — base address `http://BRIDGE_IP:8099`, then add connectors:
+
+| Connector | Type | Command ON | Command OFF / Value |
+|---|---|---|---|
+| Power | Digital | `/control/living/on` | `/control/living/off` |
+| Temperature | Analog | `/control/living/temp/<v.1>` | |
+| Mode | Analog | `/control/living/mode/<v.0>` | |
+| Fan Speed | Analog | `/control/living/fan/<v.0>` | |
 
 ## Deploy
 

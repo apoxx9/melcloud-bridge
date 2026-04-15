@@ -81,12 +81,15 @@ async def get_status_by_device(
 
 # Mode string -> numeric mapping for Loxone
 LOXONE_MODE_MAP = {
-    "Heat": 1,
-    "Cool": 2,
-    "Dry": 3,
-    "Fan": 4,
-    "Auto": 5,
+    "Auto": 1,
+    "Heat": 2,
+    "Cool": 3,
+    "Dry": 4,
+    "Fan": 5,
 }
+
+# Reverse: numeric -> mode name (for /control/{device}/mode/{number})
+LOXONE_MODE_REVERSE = {v: k.lower() for k, v in LOXONE_MODE_MAP.items()}
 
 LOXONE_FAN_MAP = {
     "Auto": 0,
@@ -178,6 +181,15 @@ async def control_off(device: str):
 
 @app.get("/control/{device}/mode/{mode}")
 async def control_mode(device: str, mode: str):
+    # Support numeric mode (1-5) for Loxone connectors
+    try:
+        mode_num = int(mode)
+        if mode_num in LOXONE_MODE_REVERSE:
+            mode = LOXONE_MODE_REVERSE[mode_num]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown mode number: {mode_num}. Valid: 1-5")
+    except ValueError:
+        pass  # String mode like "heat" — pass through as-is
     return await _control_device(device, mode=mode)
 
 
