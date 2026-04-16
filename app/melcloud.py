@@ -408,30 +408,60 @@ class MelCloudBridge:
         if not device.is_connected:
             raise ValueError("Device is not connected")
 
-        state_data: dict[str, Any] = {}
+        # MELCloud Home API requires ALL control fields in every PUT.
+        # Unchanged fields must be explicitly null. Vane values are sent as strings.
+        state_data: dict[str, Any] = {
+            "power": None,
+            "operationMode": None,
+            "setFanSpeed": None,
+            "vaneHorizontalDirection": None,
+            "vaneVerticalDirection": None,
+            "setTemperature": None,
+            "temperatureIncrementOverride": None,
+            "inStandbyMode": None,
+        }
 
+        changed = False
         if power is not None:
             state_data["power"] = power
+            changed = True
         if temperature is not None:
             state_data["setTemperature"] = temperature
+            changed = True
         if mode is not None:
             if mode not in ATA_MODE_MAP:
                 raise ValueError(f"Unknown mode: {mode}. Valid: {list(ATA_MODE_MAP.keys())}")
             state_data["operationMode"] = ATA_MODE_MAP[mode]
+            changed = True
         if fan_speed is not None:
             if fan_speed not in ATA_FAN_SPEED_MAP:
                 raise ValueError(f"Unknown fan speed: {fan_speed}. Valid: {list(ATA_FAN_SPEED_MAP.keys())}")
             state_data["setFanSpeed"] = ATA_FAN_SPEED_MAP[fan_speed]
+            changed = True
         if vane_vertical is not None:
             if vane_vertical not in ATA_VANE_VERTICAL_MAP:
                 raise ValueError(f"Unknown vane vertical: {vane_vertical}. Valid: {list(ATA_VANE_VERTICAL_MAP.keys())}")
-            state_data["vaneVerticalDirection"] = ATA_VANE_VERTICAL_MAP[vane_vertical]
+            # Web BFF expects words for auto/swing, numeric strings for positions
+            if vane_vertical == "swing":
+                state_data["vaneVerticalDirection"] = "Swing"
+            elif vane_vertical == "auto":
+                state_data["vaneVerticalDirection"] = "Auto"
+            else:
+                state_data["vaneVerticalDirection"] = str(ATA_VANE_VERTICAL_MAP[vane_vertical])
+            changed = True
         if vane_horizontal is not None:
             if vane_horizontal not in ATA_VANE_HORIZONTAL_MAP:
                 raise ValueError(f"Unknown vane horizontal: {vane_horizontal}. Valid: {list(ATA_VANE_HORIZONTAL_MAP.keys())}")
-            state_data["vaneHorizontalDirection"] = ATA_VANE_HORIZONTAL_MAP[vane_horizontal]
+            # Web BFF expects words for auto/swing, numeric strings for positions
+            if vane_horizontal == "swing":
+                state_data["vaneHorizontalDirection"] = "Swing"
+            elif vane_horizontal == "auto":
+                state_data["vaneHorizontalDirection"] = "Auto"
+            else:
+                state_data["vaneHorizontalDirection"] = str(ATA_VANE_HORIZONTAL_MAP[vane_horizontal])
+            changed = True
 
-        if not state_data:
+        if not changed:
             raise ValueError("No control parameters provided")
 
         device_type = device.device_type or "ataunit"
