@@ -92,13 +92,14 @@ LOXONE_MODE_MAP = {
 LOXONE_MODE_REVERSE = {v: k.lower() for k, v in LOXONE_MODE_MAP.items()}
 
 LOXONE_FAN_MAP = {
-    "Auto": 0,
-    "Off": 0,
-    "Silent": 1,
-    "One": 2,
-    "Two": 3,
-    "Three": 4,
-    "Four": 5,
+    "Auto": 1,
+    "Off": 1,
+    "Silent": 2,
+    "One": 3,
+    "Two": 4,
+    "Three": 5,
+    "Four": 6,
+    "Five": 6,  # API uses "Five" for turbo (speed 4)
 }
 
 # Vane string -> Loxone number (for status output)
@@ -119,12 +120,12 @@ LOXONE_VANE_H_MAP = {
 
 # Numeric -> fan speed name (for /control/{device}/fan/{number})
 LOXONE_FAN_REVERSE = {
-    0: "auto",
-    1: "silent",
-    2: "1",
-    3: "2",
-    4: "3",
-    5: "4",
+    1: "auto",
+    2: "silent",
+    3: "1",
+    4: "2",
+    5: "3",
+    6: "4",
 }
 
 
@@ -150,6 +151,9 @@ async def get_status_loxone(
         "vane_horizontal": LOXONE_VANE_H_MAP.get(s.get("VaneHorizontalDirection", ""), 0),
         "is_connected": 1 if status["is_connected"] else 0,
         "is_in_error": 1 if status["is_in_error"] else 0,
+        # Derived: unit is actually running when the fan is spinning
+        # More reliable than Power field which can lag behind actual state
+        "running": 0 if s.get("ActualFanSpeed") in ("Off", "") else 1,
     }
 
 
@@ -237,7 +241,7 @@ async def control_fan(device: str, speed: str):
         if speed_num in LOXONE_FAN_REVERSE:
             speed = LOXONE_FAN_REVERSE[speed_num]
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown fan speed number: {speed_num}. Valid: 0-5")
+            raise HTTPException(status_code=400, detail=f"Unknown fan speed number: {speed_num}. Valid: 1-6")
     except ValueError:
         speed = speed.lower()  # Normalize to lowercase
     return await _control_device(device, fan_speed=speed)

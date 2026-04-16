@@ -102,12 +102,12 @@ All controls accept both names and numbers:
 
 | Number | Fan Speed |
 |--------|-----------|
-| 0 | Auto |
-| 1 | Silent |
-| 2 | Speed 1 (low) |
-| 3 | Speed 2 (medium) |
-| 4 | Speed 3 (high) |
-| 5 | Speed 4 (turbo) |
+| 1 | Auto |
+| 2 | Silent |
+| 3 | Speed 1 (low) |
+| 4 | Speed 2 (medium) |
+| 5 | Speed 3 (high) |
+| 6 | Speed 4 (turbo) |
 
 | Number | Vane Vertical |
 |--------|---------------|

@@ -437,8 +437,13 @@ class MelCloudBridge:
         device_type = device.device_type or "ataunit"
         result = await self._api_put(f"{device_type}/{device.id}", state_data)
 
-        # Force refresh on next poll
-        self._last_poll = 0
+        # Refresh cache immediately so the next status read reflects the new state
+        # This prevents Loxone from reading stale data and undoing commands
+        try:
+            await self._refresh_devices()
+        except Exception:
+            logger.exception("Post-control refresh failed (cache may be stale)")
+            self._last_poll = 0  # force refresh on next poll
         return result
 
 
