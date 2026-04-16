@@ -103,16 +103,18 @@ LOXONE_FAN_MAP = {
 
 # Vane string -> Loxone number (for status output)
 LOXONE_VANE_V_MAP = {
-    "Auto": 0,
-    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
-    "Swing": 6,
+    "Auto": 1,
+    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6,
+    "One": 2, "Two": 3, "Three": 4, "Four": 5, "Five": 6,
+    "Swing": 7, "7": 7,
 }
 
 LOXONE_VANE_H_MAP = {
-    "Auto": 0,
-    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
-    "Left": 1, "MiddleLeft": 2, "Centre": 3, "MiddleRight": 4, "Right": 5, "Split": 6,
-    "Swing": 7,
+    "Auto": 1,
+    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7,
+    "One": 2, "Two": 3, "Three": 4, "Four": 5, "Five": 6, "Six": 7,
+    "Left": 2, "MiddleLeft": 3, "Centre": 4, "MiddleRight": 5, "Right": 6, "Split": 7,
+    "Swing": 8, "12": 8,
 }
 
 # Numeric -> fan speed name (for /control/{device}/fan/{number})
@@ -243,9 +245,9 @@ async def control_fan(device: str, speed: str):
 
 # Numeric -> vane name (for Loxone connectors)
 # Vertical: 0=auto, 1-5=positions, 6=swing
-LOXONE_VANE_V_REVERSE = {0: "auto", 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "swing"}
-# Horizontal: 0=auto, 1-6=positions, 7=swing
-LOXONE_VANE_H_REVERSE = {0: "auto", 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "swing"}
+LOXONE_VANE_V_REVERSE = {1: "auto", 2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "swing"}
+# Horizontal: 1=auto, 2-7=positions 1-6, 8=swing
+LOXONE_VANE_H_REVERSE = {1: "auto", 2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "swing"}
 
 
 @app.get("/control/{device}/vane/vertical/{direction}")
@@ -255,7 +257,7 @@ async def control_vane_vertical(device: str, direction: str):
         if num in LOXONE_VANE_V_REVERSE:
             direction = LOXONE_VANE_V_REVERSE[num]
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown vane vertical number: {num}. Valid: 0-6")
+            raise HTTPException(status_code=400, detail=f"Unknown vane vertical number: {num}. Valid: 1-7")
     except ValueError:
         direction = direction.lower()
     return await _control_device(device, vane_vertical=direction)
@@ -268,7 +270,7 @@ async def control_vane_horizontal(device: str, direction: str):
         if num in LOXONE_VANE_H_REVERSE:
             direction = LOXONE_VANE_H_REVERSE[num]
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown vane horizontal number: {num}. Valid: 0-7")
+            raise HTTPException(status_code=400, detail=f"Unknown vane horizontal number: {num}. Valid: 1-8")
     except ValueError:
         direction = direction.lower()
     return await _control_device(device, vane_horizontal=direction)

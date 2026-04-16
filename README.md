@@ -111,15 +111,15 @@ All controls accept both names and numbers:
 
 | Number | Vane Vertical |
 |--------|---------------|
-| 0 | Auto |
-| 1-5 | Position 1-5 |
-| 6 | Swing |
+| 1 | Auto |
+| 2-6 | Position 1-5 |
+| 7 | Swing |
 
 | Number | Vane Horizontal |
 |--------|-----------------|
-| 0 | Auto |
-| 1-6 | Position 1-6 |
-| 7 | Swing |
+| 1 | Auto |
+| 2-7 | Position 1-6 |
+| 8 | Swing |
 
 Examples:
 
