@@ -234,6 +234,25 @@ API docs are available at `http://localhost:8099/docs`.
 - **Auth lockout**: too many failed login attempts will temporarily lock the Cognito account (~15-30 min).
 - **Polling failures**: after 3 consecutive poll failures, the bridge automatically re-authenticates. Backoff increases exponentially up to 15 minutes.
 
+## Polling and Caching
+
+There are two independent poll cycles:
+
+```
+MELCloud API  ←──(POLL_INTERVAL, default 60s)──  Bridge  ←──(30s recommended)──  Loxone
+```
+
+**Loxone polls the bridge locally**, not MELCloud. This means Loxone's poll speed has zero impact on MELCloud rate limits — you can poll as frequently as you want.
+
+**After any control command** (power, mode, temp, fan, vane), the bridge immediately fetches fresh state from MELCloud. This means Loxone's next status poll will reflect the change, even if the bridge's regular poll cycle hasn't run yet.
+
+**Changes made on the physical remote** or via the MELCloud app are only picked up on the bridge's next MELCloud poll — up to `POLL_INTERVAL` seconds of lag.
+
+**Recommended setup:**
+- Loxone Virtual HTTP Input poll interval: **30 seconds**
+- Bridge `POLL_INTERVAL`: **30-60 seconds** (lower = faster detection of remote/physical changes, higher = fewer API calls)
+- Lowering Loxone's interval below `POLL_INTERVAL` won't improve freshness — the bridge cache only updates on its own schedule or after commands
+
 ## Architecture
 
 - **FastAPI** async REST API
