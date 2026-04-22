@@ -89,8 +89,8 @@ LOXONE_MODE_MAP = {
     "Fan": 5,
 }
 
-# Reverse: numeric -> mode name (for /control/{device}/mode/{number})
-LOXONE_MODE_REVERSE = {v: k.lower() for k, v in LOXONE_MODE_MAP.items()}
+# Reverse: numeric -> mode name (must use ATA_MODE_MAP keys, not LOXONE_MODE_MAP keys)
+LOXONE_MODE_REVERSE = {1: "auto", 2: "heat", 3: "cool", 4: "dry", 5: "fan"}
 
 LOXONE_FAN_MAP = {
     "Auto": 1,
