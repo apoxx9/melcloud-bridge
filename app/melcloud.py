@@ -467,8 +467,9 @@ class MelCloudBridge:
         device_type = device.device_type or "ataunit"
         result = await self._api_put(f"{device_type}/{device.id}", state_data)
 
-        # Refresh cache immediately so the next status read reflects the new state
-        # This prevents Loxone from reading stale data and undoing commands
+        # Wait briefly for MELCloud to process, then refresh cache
+        # Without the delay, the refresh reads stale state causing mode flip-flop
+        await asyncio.sleep(2)
         try:
             await self._refresh_devices()
         except Exception:
