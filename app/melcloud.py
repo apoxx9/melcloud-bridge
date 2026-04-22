@@ -467,14 +467,8 @@ class MelCloudBridge:
         device_type = device.device_type or "ataunit"
         result = await self._api_put(f"{device_type}/{device.id}", state_data)
 
-        # Wait briefly for MELCloud to process, then refresh cache
-        # Without the delay, the refresh reads stale state causing mode flip-flop
-        await asyncio.sleep(2)
-        try:
-            await self._refresh_devices()
-        except Exception:
-            logger.exception("Post-control refresh failed (cache may be stale)")
-            self._last_poll = 0  # force refresh on next poll
+        # Force next poll to refresh, but don't block the response
+        self._last_poll = 0
         return result
 
 
