@@ -82,6 +82,7 @@ async def get_status_by_device(
 # Mode string -> numeric mapping for Loxone
 LOXONE_MODE_MAP = {
     "Auto": 1,
+    "Automatic": 1,  # API returns "Automatic" for auto mode
     "Heat": 2,
     "Cool": 3,
     "Dry": 4,

@@ -28,13 +28,13 @@ API_HEADERS = {
     "User-Agent": USER_AGENT,
 }
 
-# Mitsubishi ATA operation mode codes
+# MELCloud Home web BFF expects word strings for operation mode
 ATA_MODE_MAP = {
-    "heat": 1,
-    "dry": 2,
-    "cool": 3,
-    "fan": 7,
-    "auto": 8,
+    "heat": "Heat",
+    "dry": "Dry",
+    "cool": "Cool",
+    "fan": "Fan",
+    "auto": "Automatic",  # NOT "Auto" — the API uses "Automatic"
 }
 
 ATA_FAN_SPEED_MAP = {
