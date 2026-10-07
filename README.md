@@ -16,6 +16,8 @@ MELCloud Home uses a three-layer OIDC auth chain (Cognito -> IdentityServer -> B
 | GET    | /devices   | List all registered devices              |
 | GET    | /status    | Device status (add `?fresh=true` to skip cache) |
 | POST   | /control   | Control device (power, temperature, mode, fan, vanes) |
+| GET    | /desired/{device} | Desired state held by the reconciler |
+| DELETE | /desired/{device} | Release device (or `/{field}`) from reconciliation |
 
 ### GET /devices
 
@@ -176,6 +178,8 @@ docker run -d \
   -e MELCLOUD_EMAIL=your-email@example.com \
   -e MELCLOUD_PASSWORD=your-password \
   -e POLL_INTERVAL=60 \
+  -e RECONCILE=true \
+  -v melcloud-bridge-data:/app/data \
   ghcr.io/apoxx9/melcloud-bridge:latest
 ```
 
@@ -193,6 +197,12 @@ services:
       - MELCLOUD_EMAIL=your-email@example.com
       - MELCLOUD_PASSWORD=your-password
       - POLL_INTERVAL=60
+      - RECONCILE=true
+    volumes:
+      - melcloud-bridge-data:/app/data
+
+volumes:
+  melcloud-bridge-data:
 ```
 
 The image supports both `linux/amd64` and `linux/arm64`.
@@ -217,13 +227,38 @@ API docs are available at `http://localhost:8099/docs`.
 
 ## Configuration
 
-| Variable          | Default   | Description                          |
-|-------------------|-----------|--------------------------------------|
-| MELCLOUD_EMAIL    | required  | MELCloud Home email                  |
-| MELCLOUD_PASSWORD | required  | MELCloud Home password               |
-| POLL_INTERVAL     | 60        | Status poll interval in seconds (10-3600) |
-| API_HOST          | 0.0.0.0   | API bind address                     |
-| API_PORT          | 8099      | API port                             |
+| Variable           | Default   | Description                          |
+|--------------------|-----------|--------------------------------------|
+| MELCLOUD_EMAIL     | required  | MELCloud Home email                  |
+| MELCLOUD_PASSWORD  | required  | MELCloud Home password               |
+| POLL_INTERVAL      | 60        | Status poll interval in seconds (10-3600) |
+| API_HOST           | 0.0.0.0   | API bind address                     |
+| API_PORT           | 8099      | API port                             |
+| RECONCILE          | false     | Re-assert last commanded state if the device drifts |
+| DESIRED_STATE_FILE | data/desired_state.json | Where desired state is persisted |
+
+## Reconciliation
+
+Devices sometimes drift from what was last commanded: a lost command, a power
+blip, the unit reverting vanes on its own, or someone using the IR remote. With
+`RECONCILE=true` the bridge actively corrects this:
+
+- Every `/control` command (POST or GET shortcut) records the commanded fields
+  as the device's **desired state**. Only fields you have actually commanded
+  are managed — if you never set vanes through the bridge, vanes stay free.
+- On each regular poll, actual state is compared against desired state. A field
+  that mismatches on **two consecutive polls** is re-asserted with a single
+  corrective command (one-poll blips are ignored to filter MELCloud reporting lag).
+- Desired state is persisted to `DESIRED_STATE_FILE` and survives restarts —
+  mount a volume at `/app/data` (the bundled compose file does this).
+- `GET /desired/{device}` shows what the bridge is holding the device to.
+  `DELETE /desired/{device}` releases the whole device;
+  `DELETE /desired/{device}/{field}` releases one field
+  (`power`, `temperature`, `mode`, `fan_speed`, `vane_vertical`, `vane_horizontal`).
+
+Note: with reconciliation on, changes made via the IR remote or the MELCloud
+app are treated as drift and reverted within ~2 poll cycles. The bridge (e.g.
+Loxone) is the source of truth for every managed field.
 
 ## Known Limits
 

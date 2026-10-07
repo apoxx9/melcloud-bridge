@@ -5,6 +5,7 @@ import json as json_mod
 import logging
 import re
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -67,6 +68,43 @@ ATA_VANE_HORIZONTAL_MAP = {
     "swing": 12,
 }
 
+# Reported status value -> canonical control value, for drift detection.
+# A reported value missing from these maps means "can't judge" — never reconcile on it.
+ACTUAL_MODE_TO_CANONICAL = {v: k for k, v in ATA_MODE_MAP.items()}  # "Automatic" -> "auto"
+
+ACTUAL_FAN_TO_CANONICAL = {
+    "Auto": "auto",
+    "Silent": "silent",
+    "One": "1",
+    "Two": "2",
+    "Three": "3",
+    "Four": "4",
+    "Five": "4",  # API reports "Five" for turbo (set value 5 = canonical "4")
+}
+
+ACTUAL_VANE_V_TO_CANONICAL = {
+    "Auto": "auto",
+    "One": "1", "Two": "2", "Three": "3", "Four": "4", "Five": "5",
+    "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
+    "Swing": "swing", "7": "swing",
+    "0": "auto",
+}
+
+ACTUAL_VANE_H_TO_CANONICAL = {
+    "Auto": "auto",
+    "One": "1", "Two": "2", "Three": "3", "Four": "4", "Five": "5", "Six": "6",
+    "Left": "1", "MiddleLeft": "2", "Centre": "3",
+    "MiddleRight": "4", "Right": "5", "Split": "6",
+    "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6",
+    "Swing": "swing", "12": "swing",
+    "0": "auto",
+}
+
+# Fields a desired state can hold (same names as set_device_state kwargs)
+DESIRED_FIELDS = (
+    "power", "temperature", "mode", "fan_speed", "vane_vertical", "vane_horizontal",
+)
+
 
 class MelCloudBridge:
     """Handles auth, polling, and device control for MELCloud Home."""
@@ -78,6 +116,11 @@ class MelCloudBridge:
         self._last_poll: float = 0
         self._poll_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+        # device_id -> {field: canonical value} — last state commanded via the API
+        self._desired: dict[str, dict[str, Any]] = {}
+        # device_id -> {field: consecutive polls the field has been drifted}
+        self._mismatch_streak: dict[str, dict[str, int]] = {}
+        self._load_desired()
 
     async def start(self) -> None:
         # Use a cookie jar that handles all domains and don't auto-follow redirects
@@ -274,6 +317,8 @@ class MelCloudBridge:
         while True:
             try:
                 await self._refresh_devices()
+                if settings.reconcile:
+                    await self._reconcile()
                 consecutive_failures = 0
             except Exception:
                 consecutive_failures += 1
@@ -305,6 +350,115 @@ class MelCloudBridge:
             self._devices = devices
             self._last_poll = time.time()
             logger.info("Refreshed %d devices", len(devices))
+
+    # --- Desired state (reconciliation) ---
+
+    def _load_desired(self) -> None:
+        path = Path(settings.desired_state_file)
+        if not path.exists():
+            return
+        try:
+            data = json_mod.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                self._desired = {
+                    dev_id: {f: v for f, v in fields.items() if f in DESIRED_FIELDS}
+                    for dev_id, fields in data.items()
+                    if isinstance(fields, dict)
+                }
+                logger.info("Loaded desired state for %d device(s) from %s", len(self._desired), path)
+        except Exception:
+            logger.exception("Failed to load desired state from %s", path)
+
+    def _save_desired(self) -> None:
+        path = Path(settings.desired_state_file)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json_mod.dumps(self._desired, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        except Exception:
+            logger.exception("Failed to save desired state to %s", path)
+
+    def get_desired(self, device_id: str) -> dict[str, Any]:
+        return dict(self._desired.get(device_id, {}))
+
+    def clear_desired(self, device_id: str, field: str | None = None) -> dict[str, Any]:
+        """Release a device (or one field) from reconciliation. Returns remaining desired state."""
+        if field is None:
+            self._desired.pop(device_id, None)
+            self._mismatch_streak.pop(device_id, None)
+        else:
+            self._desired.get(device_id, {}).pop(field, None)
+            self._mismatch_streak.get(device_id, {}).pop(field, None)
+            if not self._desired.get(device_id):
+                self._desired.pop(device_id, None)
+        self._save_desired()
+        return self.get_desired(device_id)
+
+    def _record_desired(self, device_id: str, fields: dict[str, Any]) -> None:
+        self._desired.setdefault(device_id, {}).update(fields)
+        # Commanded fields start a fresh drift observation window
+        streak = self._mismatch_streak.get(device_id)
+        if streak:
+            for f in fields:
+                streak.pop(f, None)
+        self._save_desired()
+
+    def _drifted_fields(self, desired: dict[str, Any], actual: dict[str, str]) -> dict[str, Any]:
+        """Compare desired (canonical) vs reported settings. Unknown reported values are skipped."""
+        drift: dict[str, Any] = {}
+
+        if "power" in desired and "Power" in actual:
+            if (actual["Power"] == "True") != desired["power"]:
+                drift["power"] = desired["power"]
+
+        if "temperature" in desired and "SetTemperature" in actual:
+            try:
+                if abs(float(actual["SetTemperature"]) - float(desired["temperature"])) >= 0.25:
+                    drift["temperature"] = desired["temperature"]
+            except (ValueError, TypeError):
+                pass
+
+        checks = [
+            ("mode", "OperationMode", ACTUAL_MODE_TO_CANONICAL),
+            ("fan_speed", "SetFanSpeed", ACTUAL_FAN_TO_CANONICAL),
+            ("vane_vertical", "VaneVerticalDirection", ACTUAL_VANE_V_TO_CANONICAL),
+            ("vane_horizontal", "VaneHorizontalDirection", ACTUAL_VANE_H_TO_CANONICAL),
+        ]
+        for field, setting_name, to_canonical in checks:
+            if field in desired and setting_name in actual:
+                reported = to_canonical.get(actual[setting_name])
+                if reported is not None and reported != desired[field]:
+                    drift[field] = desired[field]
+
+        return drift
+
+    async def _reconcile(self) -> None:
+        """Re-assert desired state on devices that drifted (2 consecutive polls to confirm)."""
+        for device in self._devices:
+            desired = self._desired.get(device.id)
+            if not desired or not device.is_connected:
+                continue
+
+            actual = {s.name: s.value for s in device.settings}
+            drifted = self._drifted_fields(desired, actual)
+            prev_streak = self._mismatch_streak.get(device.id, {})
+            self._mismatch_streak[device.id] = {f: prev_streak.get(f, 0) + 1 for f in drifted}
+
+            # Only correct fields that drifted on 2+ consecutive polls (filters API lag)
+            confirmed = {f: v for f, v in drifted.items() if prev_streak.get(f, 0) >= 1}
+            if not confirmed:
+                continue
+
+            logger.warning(
+                "Reconcile: '%s' drifted on %s — re-asserting desired state",
+                device.given_display_name, sorted(confirmed),
+            )
+            try:
+                await self.set_device_state(device_id=device.id, **confirmed)
+                self._mismatch_streak[device.id] = {}
+            except Exception:
+                logger.exception("Reconcile write failed for '%s'", device.given_display_name)
 
     # --- API helpers ---
 
@@ -422,21 +576,26 @@ class MelCloudBridge:
         }
 
         changed = False
+        commanded: dict[str, Any] = {}
         if power is not None:
             state_data["power"] = power
+            commanded["power"] = power
             changed = True
         if temperature is not None:
             state_data["setTemperature"] = temperature
+            commanded["temperature"] = temperature
             changed = True
         if mode is not None:
             if mode not in ATA_MODE_MAP:
                 raise ValueError(f"Unknown mode: {mode}. Valid: {list(ATA_MODE_MAP.keys())}")
             state_data["operationMode"] = ATA_MODE_MAP[mode]
+            commanded["mode"] = mode
             changed = True
         if fan_speed is not None:
             if fan_speed not in ATA_FAN_SPEED_MAP:
                 raise ValueError(f"Unknown fan speed: {fan_speed}. Valid: {list(ATA_FAN_SPEED_MAP.keys())}")
             state_data["setFanSpeed"] = ATA_FAN_SPEED_MAP[fan_speed]
+            commanded["fan_speed"] = fan_speed
             changed = True
         if vane_vertical is not None:
             if vane_vertical not in ATA_VANE_VERTICAL_MAP:
@@ -448,6 +607,7 @@ class MelCloudBridge:
                 state_data["vaneVerticalDirection"] = "Auto"
             else:
                 state_data["vaneVerticalDirection"] = str(ATA_VANE_VERTICAL_MAP[vane_vertical])
+            commanded["vane_vertical"] = vane_vertical
             changed = True
         if vane_horizontal is not None:
             if vane_horizontal not in ATA_VANE_HORIZONTAL_MAP:
@@ -459,6 +619,7 @@ class MelCloudBridge:
                 state_data["vaneHorizontalDirection"] = "Auto"
             else:
                 state_data["vaneHorizontalDirection"] = str(ATA_VANE_HORIZONTAL_MAP[vane_horizontal])
+            commanded["vane_horizontal"] = vane_horizontal
             changed = True
 
         if not changed:
@@ -466,6 +627,9 @@ class MelCloudBridge:
 
         device_type = device.device_type or "ataunit"
         result = await self._api_put(f"{device_type}/{device.id}", state_data)
+
+        # Remember what was commanded so the reconciler can re-assert it on drift
+        self._record_desired(device.id, commanded)
 
         # Force next poll to refresh, but don't block the response
         self._last_poll = 0

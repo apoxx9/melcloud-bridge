@@ -75,6 +75,7 @@ class HealthResponse(BaseModel):
     authenticated: bool
     device_count: int
     cache_age_seconds: float | None
+    reconcile: bool = False
 
 
 # --- MELCloud Home data models ---

@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 
-from app.melcloud import bridge
+from app.config import settings
+from app.melcloud import DESIRED_FIELDS, bridge
 from app.models import ControlRequest, DeviceStatus, DeviceSummary, HealthResponse
 
 logging.basicConfig(
@@ -39,6 +40,7 @@ async def health():
         authenticated=bridge.is_authenticated,
         device_count=bridge.device_count,
         cache_age_seconds=bridge.cache_age_seconds,
+        reconcile=settings.reconcile,
     )
 
 
@@ -279,3 +281,42 @@ async def control_vane_horizontal(device: str, direction: str):
     except ValueError:
         direction = direction.lower()
     return await _control_device(device, vane_horizontal=direction)
+
+
+# --- Desired state (reconciliation) endpoints ---
+
+
+@app.get("/desired/{device}")
+async def get_desired(device: str):
+    """Show the state the reconciler holds this device to (empty until something is commanded)."""
+    dev = await bridge.get_device(device)
+    if dev is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return {
+        "id": dev.id,
+        "name": dev.given_display_name,
+        "reconcile_enabled": settings.reconcile,
+        "desired": bridge.get_desired(dev.id),
+    }
+
+
+@app.delete("/desired/{device}")
+async def clear_desired(device: str):
+    """Release the whole device from reconciliation."""
+    dev = await bridge.get_device(device)
+    if dev is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    remaining = bridge.clear_desired(dev.id)
+    return {"id": dev.id, "desired": remaining}
+
+
+@app.delete("/desired/{device}/{field}")
+async def clear_desired_field(device: str, field: str):
+    """Release a single field (power, temperature, mode, fan_speed, vane_vertical, vane_horizontal)."""
+    if field not in DESIRED_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Unknown field: {field}. Valid: {list(DESIRED_FIELDS)}")
+    dev = await bridge.get_device(device)
+    if dev is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    remaining = bridge.clear_desired(dev.id, field)
+    return {"id": dev.id, "desired": remaining}

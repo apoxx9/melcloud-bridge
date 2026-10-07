@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     poll_interval: int = Field(default=60, ge=10, le=3600)
     api_host: str = "0.0.0.0"
     api_port: int = 8099
+    reconcile: bool = False
+    desired_state_file: str = "data/desired_state.json"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
