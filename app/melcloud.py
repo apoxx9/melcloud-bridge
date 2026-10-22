@@ -106,6 +106,14 @@ DESIRED_FIELDS = (
 )
 
 
+def _mask_email(email: str | None) -> str:
+    """Mask an email for logging: j***@example.com."""
+    if not email or "@" not in email:
+        return "unknown"
+    local, _, domain = email.partition("@")
+    return f"{local[0]}***@{domain}"
+
+
 class MelCloudBridge:
     """Handles auth, polling, and device control for MELCloud Home."""
 
@@ -308,7 +316,7 @@ class MelCloudBridge:
                 raise RuntimeError(f"API returned {resp.status} after login — session cookies not valid")
             resp.raise_for_status()
             data = await resp.json()
-            logger.info("Auth verified — user: %s", data.get("email", "unknown"))
+            logger.info("Auth verified — user: %s", _mask_email(data.get("email")))
 
     # --- Polling ---
 

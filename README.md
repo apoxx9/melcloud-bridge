@@ -131,7 +131,7 @@ http://192.168.1.x:8099/control/living/on
 http://192.168.1.x:8099/control/living/mode/heat
 http://192.168.1.x:8099/control/living/mode/2
 http://192.168.1.x:8099/control/living/temp/22
-http://192.168.1.x:8099/control/5e672a9f-aa0c-498e-9da0-7672dd9ec392/off
+http://192.168.1.x:8099/control/YOUR_DEVICE_ID/off
 ```
 
 ### Loxone integration
