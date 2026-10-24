@@ -75,11 +75,12 @@ ACTUAL_MODE_TO_CANONICAL = {v: k for k, v in ATA_MODE_MAP.items()}  # "Automatic
 ACTUAL_FAN_TO_CANONICAL = {
     "Auto": "auto",
     "Silent": "silent",
-    "One": "1",
-    "Two": "2",
-    "Three": "3",
-    "Four": "4",
-    "Five": "4",  # API reports "Five" for turbo (set value 5 = canonical "4")
+    # Word values name the MELCloud enum, including the silent-speed slot.
+    "One": "silent",
+    "Two": "1",
+    "Three": "2",
+    "Four": "3",
+    "Five": "4",
 }
 
 ACTUAL_VANE_V_TO_CANONICAL = {

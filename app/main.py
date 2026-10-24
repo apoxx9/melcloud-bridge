@@ -98,11 +98,11 @@ LOXONE_FAN_MAP = {
     "Auto": 1,
     "Off": 1,
     "Silent": 2,
-    "One": 3,
-    "Two": 4,
-    "Three": 5,
-    "Four": 6,
-    "Five": 6,  # API uses "Five" for turbo (speed 4)
+    "One": 2,
+    "Two": 3,
+    "Three": 4,
+    "Four": 5,
+    "Five": 6,
 }
 
 # Vane string -> Loxone number (for status output)
