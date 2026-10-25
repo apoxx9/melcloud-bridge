@@ -249,6 +249,15 @@ blip, the unit reverting vanes on its own, or someone using the IR remote. With
 - On each regular poll, actual state is compared against desired state. A field
   that mismatches on **two consecutive polls** is re-asserted with a single
   corrective command (one-poll blips are ignored to filter MELCloud reporting lag).
+- **Commanded off but still running**: MELCloud's `Power` field records the state
+  the cloud accepted, not what the unit is doing — a unit that ignores an "off"
+  keeps reporting `Power=False` while its fan still turns, which the comparison
+  above cannot see. The reconciler also checks live fan telemetry
+  (`ActualFanSpeed`) for this case and re-sends the off after **five consecutive
+  polls** — a longer window than normal drift, so a legitimate post-shutdown dry
+  cycle is not mistaken for a failed command. The inverse (commanded on, fan idle)
+  is deliberately not treated as drift: a satisfied thermostat legitimately stops
+  the fan while powered on.
 - Desired state is persisted to `DESIRED_STATE_FILE` and survives restarts —
   mount a volume at `/app/data` (the bundled compose file does this).
 - `GET /desired/{device}` shows what the bridge is holding the device to.

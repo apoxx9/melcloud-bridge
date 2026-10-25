@@ -100,6 +100,17 @@ ACTUAL_VANE_H_TO_CANONICAL = {
     "0": "auto",
 }
 
+# Consecutive drifted polls before the reconciler re-asserts a field.
+# The default filters MELCloud API lag after a write.
+DRIFT_STREAK_DEFAULT = 2
+# "Commanded off but still spinning" is judged from live telemetry, which can keep
+# reporting a fan during a legitimate post-shutdown dry cycle. Give it a longer
+# window so a normal wind-down is never mistaken for a unit ignoring the off.
+DRIFT_STREAK_POWER_TELEMETRY = 5
+
+# ActualFanSpeed values meaning the indoor fan is not turning.
+FAN_IDLE_VALUES = ("Off", "")
+
 # Fields a desired state can hold (same names as set_device_state kwargs)
 DESIRED_FIELDS = (
     "power", "temperature", "mode", "fan_speed", "vane_vertical", "vane_horizontal",
@@ -412,6 +423,27 @@ class MelCloudBridge:
                 streak.pop(f, None)
         self._save_desired()
 
+    @staticmethod
+    def _fan_is_running(actual: dict[str, str]) -> bool | None:
+        """True/False from fan telemetry; None when the device doesn't report it."""
+        reported = actual.get("ActualFanSpeed")
+        if reported is None:
+            return None
+        return reported not in FAN_IDLE_VALUES
+
+    def _required_streak(
+        self, field: str, desired: dict[str, Any], actual: dict[str, str]
+    ) -> int:
+        """Consecutive drifted polls required before re-asserting this field."""
+        if (
+            field == "power"
+            and desired.get("power") is False
+            and actual.get("Power") == "False"
+        ):
+            # Power itself agrees with desired, so only telemetry flagged this.
+            return DRIFT_STREAK_POWER_TELEMETRY
+        return DRIFT_STREAK_DEFAULT
+
     def _drifted_fields(self, desired: dict[str, Any], actual: dict[str, str]) -> dict[str, Any]:
         """Compare desired (canonical) vs reported settings. Unknown reported values are skipped."""
         drift: dict[str, Any] = {}
@@ -419,6 +451,16 @@ class MelCloudBridge:
         if "power" in desired and "Power" in actual:
             if (actual["Power"] == "True") != desired["power"]:
                 drift["power"] = desired["power"]
+
+        # MELCloud's Power field records the state the cloud accepted, not what the
+        # unit is doing: a unit that ignored an "off" keeps reporting Power=False
+        # while its fan still turns. The check above cannot see that, so judge it
+        # from live telemetry instead.
+        # The inverse (commanded on, fan idle) is deliberately NOT treated as drift:
+        # a satisfied thermostat legitimately stops the fan while powered on.
+        if desired.get("power") is False and "power" not in drift:
+            if self._fan_is_running(actual):
+                drift["power"] = False
 
         if "temperature" in desired and "SetTemperature" in actual:
             try:
@@ -451,10 +493,14 @@ class MelCloudBridge:
             actual = {s.name: s.value for s in device.settings}
             drifted = self._drifted_fields(desired, actual)
             prev_streak = self._mismatch_streak.get(device.id, {})
-            self._mismatch_streak[device.id] = {f: prev_streak.get(f, 0) + 1 for f in drifted}
+            streak = {f: prev_streak.get(f, 0) + 1 for f in drifted}
+            self._mismatch_streak[device.id] = streak
 
-            # Only correct fields that drifted on 2+ consecutive polls (filters API lag)
-            confirmed = {f: v for f, v in drifted.items() if prev_streak.get(f, 0) >= 1}
+            # Only correct fields that stayed drifted long enough (filters API lag)
+            confirmed = {
+                f: v for f, v in drifted.items()
+                if streak[f] >= self._required_streak(f, desired, actual)
+            }
             if not confirmed:
                 continue
 
@@ -462,6 +508,12 @@ class MelCloudBridge:
                 "Reconcile: '%s' drifted on %s — re-asserting desired state",
                 device.given_display_name, sorted(confirmed),
             )
+            if confirmed.get("power") is False and actual.get("Power") == "False":
+                logger.warning(
+                    "Reconcile: '%s' was commanded off but fan reports '%s' — "
+                    "unit ignored the off, re-sending",
+                    device.given_display_name, actual.get("ActualFanSpeed"),
+                )
             try:
                 await self.set_device_state(device_id=device.id, **confirmed)
                 self._mismatch_streak[device.id] = {}
