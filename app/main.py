@@ -99,13 +99,11 @@ LOXONE_MODE_REVERSE = {1: "auto", 2: "heat", 3: "cool", 4: "dry", 5: "fan"}
 # verified: the reported name is the enum name of the value that was set, so the
 # silent slot at set value 1 reports "One" and every numeric speed sits one name
 # ahead of its canonical value.
-# ActualFanSpeed is ASSUMED to use the same names for the same five physical
-# levels. It is known not to be the identical enum - it also reports "Off", which
-# has no set-value counterpart - but whether its One..Five align with the set
-# enum's has not been observed on hardware. To confirm: command "silent" on a
-# running unit and check whether ActualFanSpeed comes back "One" (assumption
-# holds) or "Two" (this map needs splitting in two). If it is wrong the impact is
-# display-only; drift detection reads SetFanSpeed exclusively.
+# ActualFanSpeed shares those same names for the same five physical levels,
+# verified on hardware 2026-10-26: commanding "silent" (set value 1) on a running
+# unit made ActualFanSpeed report "One". It additionally reports "Off" when the
+# fan is not turning, which has no set-value counterpart - hence one shared map
+# plus the "Off" entry, rather than two separate maps.
 LOXONE_FAN_MAP = {
     "Auto": 1,
     "Off": 1,
