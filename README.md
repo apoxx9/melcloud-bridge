@@ -111,6 +111,12 @@ All controls accept both names and numbers:
 | 5 | Speed 3 (high) |
 | 6 | Speed 4 (turbo) |
 
+Note: in the status direction, `fan_speed` (actual) reports **1 for both Auto and
+a stopped fan** — the reported scale has no separate number for "not turning", so
+an idle auto unit and a switched-off one look identical. Use `running` to tell
+them apart. `set_fan_speed` is unambiguous; this affects the actual-speed value
+only.
+
 | Number | Vane Vertical |
 |--------|---------------|
 | 1 | Auto |
