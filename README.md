@@ -146,6 +146,7 @@ http://192.168.1.x:8099/control/YOUR_DEVICE_ID/off
 | Mode | `"mode":\i` |
 | Fan Speed (actual) | `"fan_speed":\i` |
 | Fan Speed (set) | `"set_fan_speed":\i` |
+| Running (actual on/off) | `"running":\i` |
 | Connected | `"is_connected":\i` |
 | Vane Vertical | `"vane_vertical":\i` |
 | Vane Horizontal | `"vane_horizontal":\i` |
@@ -163,6 +164,17 @@ http://192.168.1.x:8099/control/YOUR_DEVICE_ID/off
 | Vane Horizontal | Analog | `/control/living/vane/horizontal/<v.0>` | |
 
 `<v.1>` = value with 1 decimal place, `<v.0>` = integer.
+
+**Use `running`, not `power`, for on/off status.** `power` mirrors MELCloud's
+`Power` field, which records the state the cloud accepted - what was *asked for*.
+`running` is derived from live fan telemetry - what the unit is *doing*. They
+diverge when a unit ignores a command: a failed "off" leaves `power` at 0 while
+the unit keeps heating, and anything reading `power` shows it as off. Wire both,
+drive your status display from `running`, and treat a sustained
+`power == 0 AND running == 1` as a unit that is not obeying commands.
+
+`running` is 1 whenever the fan turns, which includes the normal post-shutdown
+dry cycle, so expect it to stay 1 for a few minutes after a legitimate off.
 
 ## Deploy
 
